@@ -101,7 +101,7 @@ def send_email_notification(form_data, attachment):
     msg = MIMEMultipart()
     msg['From'] = EMAIL_USER
     msg['To'] = EMAIL_USER  # Send to yourself
-    msg['Subject'] = f"New Portfolio Contact: {form_data.get('subject')}"
+    msg['Subject'] = f"Portfolio Contact: {form_data.get('subject')}"
 
     body = f"""
     New message from website!
@@ -127,17 +127,17 @@ def send_email_notification(form_data, attachment):
             print(f"Error attaching file: {e}")
 
     try:
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
+        # --- FIX: Using SMTP_SSL on Port 465 (Prevents Timeouts) ---
+        server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+        # server.starttls()  <-- NOT needed for SSL
         server.login(EMAIL_USER, EMAIL_PASSWORD)
         text = msg.as_string()
         server.sendmail(EMAIL_USER, EMAIL_USER, text)
         server.quit()
         return True, "Sent successfully"
     except Exception as e:
-        # Return the ACTUAL error so Jace can see it
-        print(f"SMTP Error: {e}")
-        return False, str(e)
+        print(f"SMTP Error details: {e}")
+        return False, f"SMTP Error: {str(e)}"
 
 # --- HEARTBEAT ---
 def keep_alive():
@@ -186,20 +186,18 @@ def website_chat():
     ai_reply = get_gemini_response("website_visitor", user_message)
     return jsonify({"reply": ai_reply})
 
-# --- IMPROVED CONTACT FORM ROUTE ---
 @app.route("/api/contact", methods=["POST"])
 def contact_form():
     try:
         form_data = request.form
         attachment = request.files.get('attachment')
         
-        # We now get a specific message back
         success, error_message = send_email_notification(form_data, attachment)
         
         if success:
             return jsonify({"status": "success", "message": "Email sent successfully!"}), 200
         else:
-            return jsonify({"status": "error", "message": f"Error: {error_message}"}), 500
+            return jsonify({"status": "error", "message": error_message}), 500
             
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
