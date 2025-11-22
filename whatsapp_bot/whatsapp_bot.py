@@ -26,6 +26,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN")
 PHONE_NUMBER_ID = os.environ.get("PHONE_NUMBER_ID")
 VERIFY_TOKEN = "my_secret_password_jace"
+# Email Secrets
 EMAIL_USER = os.environ.get("EMAIL_USER")
 EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
 
@@ -93,9 +94,9 @@ def send_whatsapp_message(to_number, message_text):
     requests.post(url, headers=headers, json=data)
 
 def send_email_notification(form_data, attachment):
+    # Debug Check
     if not EMAIL_USER or not EMAIL_PASSWORD:
-        print("Email credentials not set.")
-        return False
+        return False, "Missing EMAIL_USER or EMAIL_PASSWORD in Render settings."
 
     msg = MIMEMultipart()
     msg['From'] = EMAIL_USER
@@ -103,7 +104,7 @@ def send_email_notification(form_data, attachment):
     msg['Subject'] = f"New Portfolio Contact: {form_data.get('subject')}"
 
     body = f"""
-    You have a new message from your portfolio website!
+    New message from website!
     
     Name: {form_data.get('fullName')}
     Email: {form_data.get('email')}
@@ -132,10 +133,11 @@ def send_email_notification(form_data, attachment):
         text = msg.as_string()
         server.sendmail(EMAIL_USER, EMAIL_USER, text)
         server.quit()
-        return True
+        return True, "Sent successfully"
     except Exception as e:
+        # Return the ACTUAL error so Jace can see it
         print(f"SMTP Error: {e}")
-        return False
+        return False, str(e)
 
 # --- HEARTBEAT ---
 def keep_alive():
@@ -184,24 +186,22 @@ def website_chat():
     ai_reply = get_gemini_response("website_visitor", user_message)
     return jsonify({"reply": ai_reply})
 
-# --- NEW CONTACT FORM ROUTE ---
+# --- IMPROVED CONTACT FORM ROUTE ---
 @app.route("/api/contact", methods=["POST"])
 def contact_form():
     try:
-        # Access form fields
         form_data = request.form
-        # Access file (if any)
         attachment = request.files.get('attachment')
         
-        success = send_email_notification(form_data, attachment)
+        # We now get a specific message back
+        success, error_message = send_email_notification(form_data, attachment)
         
         if success:
             return jsonify({"status": "success", "message": "Email sent successfully!"}), 200
         else:
-            return jsonify({"status": "error", "message": "Failed to send email."}), 500
+            return jsonify({"status": "error", "message": f"Error: {error_message}"}), 500
             
     except Exception as e:
-        print(f"Contact Form Error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == "__main__":
