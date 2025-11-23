@@ -3,6 +3,7 @@ import time
 import threading
 import requests
 import smtplib
+import sys # Added for flushing logs
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
@@ -75,7 +76,7 @@ def get_gemini_response(user_id, user_text):
         chat_memory[user_id].append({"role": "model", "parts": [{"text": bot_reply}]})
         return bot_reply
     except Exception as e:
-        print(f"Gemini Error: {e}")
+        print(f"Gemini Error: {e}", flush=True)
         return "I encountered an error processing that request."
 
 def send_whatsapp_message(to_number, message_text):
@@ -94,47 +95,57 @@ def send_whatsapp_message(to_number, message_text):
 
 # --- BACKGROUND EMAIL WORKER ---
 def background_email_task(form_data, file_data, filename):
-    """Sends email in the background so the website doesn't freeze"""
-    print(f"DEBUG: Starting background email task...")
+    """Sends email in the background with LOUD logging"""
+    print(f"DEBUG: Starting background email task...", flush=True)
     
     if not EMAIL_USER or not EMAIL_PASSWORD:
-        print("Error: Credentials missing.")
+        print("DEBUG Error: Credentials missing inside thread.", flush=True)
         return
 
-    msg = MIMEMultipart()
-    msg['From'] = EMAIL_USER
-    msg['To'] = EMAIL_USER
-    msg['Subject'] = f"Portfolio Contact: {form_data.get('subject')}"
-
-    body = f"""
-    Name: {form_data.get('fullName')}
-    Email: {form_data.get('email')}
-    
-    Message:
-    {form_data.get('message')}
-    """
-    msg.attach(MIMEText(body, 'plain'))
-
-    if file_data and filename:
-        try:
-            part = MIMEBase('application', 'octet-stream')
-            part.set_payload(file_data)
-            encoders.encode_base64(part)
-            part.add_header('Content-Disposition', f"attachment; filename= {filename}")
-            msg.attach(part)
-        except Exception as e:
-            print(f"Error attaching file: {e}")
-
     try:
-        # Using SSL Port 465 (Faster/Safer)
+        msg = MIMEMultipart()
+        msg['From'] = EMAIL_USER
+        msg['To'] = EMAIL_USER
+        msg['Subject'] = f"Portfolio Contact: {form_data.get('subject')}"
+
+        body = f"""
+        New message from website!
+        
+        Name: {form_data.get('fullName')}
+        Email: {form_data.get('email')}
+        
+        Message:
+        {form_data.get('message')}
+        """
+        msg.attach(MIMEText(body, 'plain'))
+
+        if file_data and filename:
+            try:
+                print("DEBUG: Attaching file...", flush=True)
+                part = MIMEBase('application', 'octet-stream')
+                part.set_payload(file_data)
+                encoders.encode_base64(part)
+                part.add_header('Content-Disposition', f"attachment; filename= {filename}")
+                msg.attach(part)
+            except Exception as e:
+                print(f"DEBUG Error attaching file: {e}", flush=True)
+
+        print("DEBUG: Connecting to Gmail (SSL)...", flush=True)
+        # Using SSL Port 465
         server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+        
+        print("DEBUG: Logging in...", flush=True)
         server.login(EMAIL_USER, EMAIL_PASSWORD)
+        
+        print("DEBUG: Sending mail...", flush=True)
         text = msg.as_string()
         server.sendmail(EMAIL_USER, EMAIL_USER, text)
+        
         server.quit()
-        print("DEBUG: Email sent successfully!")
+        print("DEBUG: Email sent successfully! Check Spam/Sent folder.", flush=True)
+        
     except Exception as e:
-        print(f"SMTP Error: {e}")
+        print(f"DEBUG CRITICAL SMTP ERROR: {e}", flush=True)
 
 # --- HEARTBEAT ---
 def keep_alive():
@@ -173,7 +184,7 @@ def whatsapp_webhook():
                 ai_reply = get_gemini_response(sender_phone, user_message)
                 send_whatsapp_message(sender_phone, ai_reply)
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error: {e}", flush=True)
     return jsonify({"status": "success"}), 200
 
 @app.route("/api/chat", methods=["POST"])
@@ -187,6 +198,7 @@ def website_chat():
 @app.route("/api/contact", methods=["POST"])
 def contact_form():
     try:
+        print("DEBUG: Contact form request received.", flush=True)
         form_data = request.form.to_dict()
         attachment = request.files.get('attachment')
         
@@ -204,10 +216,10 @@ def contact_form():
         )
         thread.start()
         
-        # Return SUCCESS immediately (No waiting!)
         return jsonify({"status": "success", "message": "Message received! Sending in background."}), 200
             
     except Exception as e:
+        print(f"DEBUG: Request Failed: {e}", flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == "__main__":
